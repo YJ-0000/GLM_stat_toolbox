@@ -23,6 +23,7 @@
 %   t_obs    : observed t-statistic for the contrast
 %   p_val    : p-value from permutation test
 %   num_perm : number of permutations used
+%   is_sign_flipping : whether sign-flip matrix is used for iteration
 %
 % Example:
 %   X = [1 0; 1 1; 1 2; 1 3];
@@ -37,7 +38,7 @@
 %   May 26, 2025
 %==========================================================================
 
-function [t_obs, p_val, num_perm] = t_test_GLM_permutation(X, y, c, d, num_perm, perm_method, partition_scheme)
+function [t_obs, p_val, num_perm, is_sign_flipping] = t_test_GLM_permutation(X, y, c, d, num_perm, perm_method, partition_scheme, is_sign_flipping)
 
     % Set default value for d (null hypothesis)
     if nargin < 4
@@ -57,6 +58,17 @@ function [t_obs, p_val, num_perm] = t_test_GLM_permutation(X, y, c, d, num_perm,
     % Default partition scheme
     if nargin < 7
         partition_scheme = 'Ridgway (2009)';
+    end
+    
+    if nargin < 8
+        tol = 1e-10;
+        vec = (X * c);
+        if max(abs(vec - vec(1))) < tol
+            is_sign_flipping = true;
+        else
+            is_sign_flipping = false;
+            
+        end
     end
 
     % Partition the design matrix using Ridgway's method
@@ -87,18 +99,28 @@ function [t_obs, p_val, num_perm] = t_test_GLM_permutation(X, y, c, d, num_perm,
     [t_obs, ~] = t_test_GLM(X_new, y, c_new, d);
 
     % Permutation test using the 'smith' method
-    if strcmp(perm_method, 'smith')
+    if strcmp(perm_method, 'smith') 
+        
         % Compute residualized version of X1
         X1_resid = X1 - X0 * pinv(X0) * X1;
 
         % Initialize list to store permuted t-values
         t_perm_list = zeros(1, num_perm);
-
-        for np = 1:num_perm
-            % Permute rows of X1_resid and compute t-stat
-            permuted_X1 = X1_resid(randperm(r), :);
-            [t_perm, ~] = t_test_GLM([permuted_X1, X0], y, c_new, d);
-            t_perm_list(np) = t_perm;
+        
+        if ~is_sign_flipping
+            for np = 1:num_perm
+                % Permute rows of X1_resid and compute t-stat
+                permuted_X1 = X1_resid(randperm(r), :);
+                [t_perm, ~] = t_test_GLM([permuted_X1, X0], y, c_new, d);
+                t_perm_list(np) = t_perm;
+            end
+        else
+            for np = 1:num_perm
+                % Permute rows of X1_resid and compute t-stat
+                permuted_X1 = (2*(rand(r,1) < 0.5)-1) .* X1_resid;
+                [t_perm, ~] = t_test_GLM([permuted_X1, X0], y, c_new, d);
+                t_perm_list(np) = t_perm;
+            end
         end
     else
         % Other permutation methods not yet implemented
